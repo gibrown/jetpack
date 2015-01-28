@@ -403,19 +403,19 @@ class Jetpack_Color {
 		// Normalize RGB values to 1
 
 		$rgb_new = array();
-		foreach ($rgb as $item) {
-			$rgb_new[] = $item / 255;
+		foreach ($rgb as $key => $item) {
+			$rgb_new[ $key ] = $item / 255;
 		}
 		$rgb = $rgb_new;
 
 		$rgb_new = array();
-		foreach ($rgb as $item) {
+		foreach ($rgb as $key => $item) {
 			if ($item > 0.04045) {
 				$item = pow((($item + 0.055) / 1.055), 2.4);
 			} else {
 				$item = $item / 12.92;
 			}
-			$rgb_new[] = $item * 100;
+			$rgb_new[ $key ] = $item * 100;
 		}
 		$rgb = $rgb_new;
 
@@ -444,11 +444,11 @@ class Jetpack_Color {
 		$xyz['z'] /= 108.883;
 
 		$xyz_new = array();
-		foreach ($xyz as $item) {
+		foreach ($xyz as $key => $item) {
 			if ($item > 0.008856) {
-				$xyz_new[] = pow($item, 1/3);
+				$xyz_new[ $key ] = pow($item, 1/3);
 			} else {
-				$xyz_new[] = (7.787 * $item) + (16 / 116);
+				$xyz_new[ $key ] = (7.787 * $item) + (16 / 116);
 			}
 		}
 		$xyz = $xyz_new;
@@ -660,9 +660,9 @@ class Jetpack_Color {
 		$matchKey = null;
 		foreach($colors as $key => $color) {
 			if (false === ($color instanceof Jetpack_Color)) {
-				$c = new Jetpack_Color($color);
+				$color = new Jetpack_Color($color);
 			}
-			$dist = $this->getDistanceLabFrom($c);
+			$dist = $this->getDistanceLabFrom($color);
 			if ($dist < $matchDist) {
 				$matchDist = $dist;
 				$matchKey = $key;

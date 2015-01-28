@@ -334,8 +334,8 @@ class Jetpack_Media_Meta_Extractor {
 	private static function get_image_fields( $post, $args = array() ) {
 
 		$defaults = array(
-			'width'               => 200, // Required minimum width (if possible to determine)
-			'height'              => 200, // Required minimum height (if possible to determine)
+			'width'  => 200, // Required minimum width (if possible to determine)
+			'height' => 200, // Required minimum height (if possible to determine)
 		);
 
 		$args = wp_parse_args( $args, $defaults );
@@ -345,22 +345,28 @@ class Jetpack_Media_Meta_Extractor {
 		$image_booleans['gallery'] = 0;
 
 		$from_featured_image = Jetpack_PostImages::from_thumbnail( $post->ID, $args['width'], $args['height'] );
-		if ( !empty( $from_featured_image ) ) {
-			$srcs = wp_list_pluck( $from_featured_image, 'src' );
-			$image_list = array_merge( $image_list, $srcs );
+		if ( ! empty( $from_featured_image ) ) {
+			$srcs       = wp_list_pluck( $from_featured_image, 'src' );
+			$image_list = array_merge( $image_list, array_combine( $srcs, $from_featured_image ) );
 		}
 
 		$from_slideshow = Jetpack_PostImages::from_slideshow( $post->ID, $args['width'], $args['height'] );
-		if ( !empty( $from_slideshow ) ) {
-			$srcs = wp_list_pluck( $from_slideshow, 'src' );
-			$image_list = array_merge( $image_list, $srcs );
+		if ( ! empty( $from_slideshow ) ) {
+			$srcs       = wp_list_pluck( $from_slideshow, 'src' );
+			$image_list = array_merge( $image_list, array_combine( $srcs, $from_slideshow ) );
 		}
 
 		$from_gallery = Jetpack_PostImages::from_gallery( $post->ID );
 		if ( !empty( $from_gallery ) ) {
-			$srcs = wp_list_pluck( $from_gallery, 'src' );
-			$image_list = array_merge( $image_list, $srcs );
+			$srcs       = wp_list_pluck( $from_gallery, 'src' );
+			$image_list = array_merge( $image_list, array_combine( $srcs, $from_gallery ) );
 			$image_booleans['gallery']++; // @todo This count isn't correct, will only every count 1
+		}
+
+		$from_attachment = Jetpack_PostImages::from_attachment( $post->ID );
+		if ( !empty( $from_attachment ) ) {
+			$srcs       = wp_list_pluck( $from_attachment, 'src' );
+			$image_list = array_merge( $image_list, array_combine( $srcs, $from_attachment ) );
 		}
 
 		// @todo Can we check width/height of these efficiently?  Could maybe use query args at least, before we strip them out
@@ -376,8 +382,12 @@ class Jetpack_Media_Meta_Extractor {
 
 	public static function build_image_struct( $image_list ) {
 		if ( ! empty( $image_list ) ) {
-			$retval = array( 'image' => array() );
+			$retval      = array( 'image' => array() );
 			$unique_imgs = array_unique( $image_list );
+
+			// Analyze various properties of the image using GD library and more
+			$image_list = Jetpack_Media_Meta_Extractor::get_image_visual_properties( $image_list );
+
 			foreach ( $image_list as $img ) {
 				$retval['image'][] = array( 'url' => $img );
 			}
@@ -391,13 +401,250 @@ class Jetpack_Media_Meta_Extractor {
 	}
 
 	/**
+	 * Iterates over images extracted from various sources and adds more specific info
+	 * about image content (colors, transparency etc.)
+	 *
+	 * @param  [array] $image_list List of images, keys correspond to image srces,
+	 *                             values represent additional info associated with img
+	 * @return [array] The same $image_list enriched with visual properties
+	 */
+	public static function get_image_visual_properties( $image_list ) {
+		if ( ! empty( $image_list ) && is_array( $image_list ) ) {
+			foreach( $image_list as $src => $image_info ) {
+				$image_list[ $src ] = self::get_single_image_visual_properties( $image_info );
+			}
+		}
+		die;
+		return $image_list;
+	}
+
+	/**
+	 * Uses the GD library and Jetpack_Color class to determine various visual
+	 * properties of the image
+	 *
+	 * @param  [array] $image_info All information we know about the image up to this point
+	 * @return [array]             The same information enriched with visual properties
+	 */
+	public static function get_single_image_visual_properties( $image_info ) {
+		if ( empty( $image_info['src'] ) ) {
+			return $image_info;
+		}
+
+		$image_url = $image_info['src'];
+		var_dump( $image_url );
+
+		if ( ( $src = parse_url( $image_url ) ) && isset( $src['scheme'], $src['host'], $src['path'] ) ) {
+			$clean_image_url = $src['scheme'] . '://' . $src['host'] . $src['path'];
+		} elseif ( $length = strpos( $image_url, '?' ) ) {
+			$clean_image_url = substr( $image_url, 0, $length );
+		} else {
+			$clean_image_url = $image_url;
+		}
+
+		$image_extension = pathinfo( $clean_image_url, PATHINFO_EXTENSION );
+
+		switch ( $image_extension ) {
+			case 'gif':
+				$image_obj = imagecreatefromgif( $clean_image_url );
+				break;
+			case 'png' :
+				$image_obj = imagecreatefrompng( $clean_image_url );
+				break;
+			case 'jpg' :
+			case 'jpeg' :
+				$has_transparency = false;
+				$image_obj        = imagecreatefromjpeg( $clean_image_url );
+				break;
+			default:
+				return $image_info;
+		}
+
+		$color_info = self::_image_get_color_information( $image_obj );
+
+		$image_info = array_merge( $image_info, array(
+			'colors'           => $color_info['colors'],
+			'is_grayscale'     => $color_info['is_grayscale'],
+			'has_transparency' => empty( $has_transparency ) ? self::_image_has_transparency( $image_obj ) : $has_transparency,
+		) );
+
+		// var_dump( $image_info );
+		return $image_info;
+	}
+
+	/**
+	 * Color quantization routine. Converts the image into mosaic and then samples all
+	 * colors found in an image and stores them in buckets of colors that are visually
+	 * distant enough. Required distance is being controlled by the $fidelity parameter.
+	 * This method also checks whether the whole image is grayscale or not.
+	 *
+	 * @author dero <dero@xwp.co>
+	 * @param  [resource: gd] $image_obj
+	 * @param  integer        $fidelity            How distinct colors should be considered to belong to a common bucket
+	 *                                             Any value over 20 will force a single bucket to be created
+	 * @param  integer        $grayscale_tolerance Percentage of samples that can be non gray in order to consider the image grayscale
+	 * @return [array]                             Array containing color buckets and grayscale boolean
+	 */
+	private static function _image_get_color_information( $image_obj, $fidelity = 6, $grayscale_tolerance = 0 ) {
+		$results = array(
+			'colors'       => array(),
+			'is_grayscale' => null,
+		);
+
+		if ( ! is_resource( $image_obj ) || get_resource_type( $image_obj ) !== 'gd' ) {
+			return $results;
+		}
+		if ( ! class_exists( 'Jetpack_Color' ) ) {
+			jetpack_require_lib( 'class.color' ); // We need Jetpack_Color, we need it bad
+		}
+
+		$width  = (int) imagesx( $image_obj );
+		$height = (int) imagesy( $image_obj );
+
+		if ( $width * $height === 0 ) {
+			return $results; // We can't figure out the size, too bad
+		}
+
+		$max_blocks = 100; // Maximal number of areas created by pixelation
+
+		// We take the total amount of pixels in the image and split them into $max_blocks pieces.
+		// Then we create a square from each piece, round up and we have the minimal block size that
+		// is going to generate less than $max_blocks blocks.
+		$scale_ratio = ceil( sqrt( ( $width * $height ) / $max_blocks ) );
+
+		imagescale( $image_obj, ceil( $width / $scale_ratio ), ceil( $height / $scale_ratio ), IMG_BILINEAR_FIXED );
+		imagescale( $image_obj, $width, $height, IMG_BILINEAR_FIXED );
+
+
+		$colors     = array();
+		$dominances = array();
+
+		for ( $x = 0; $x <= $width; $x = $x + $scale_ratio ) {
+			for ( $y = 0; $y <= $height; $y = $y + $scale_ratio ) {
+				extract( imagecolorsforindex( $image_obj, imagecolorat( $image_obj, $x, $y ) ) );
+
+				$block_color = new Jetpack_Color( array( $red, $green, $blue ), 'rgb' );
+
+				if ( ! empty( $colors ) ) {
+					$closest_color_key = $block_color->getClosestMatch( $colors );
+				}
+				if ( $closest_color_key !== null ) {
+					$distance = $block_color->getDistanceLabFrom( $colors[ $closest_color_key ] );
+
+					if ( $distance <= $fidelity ) {
+						$ratio                        = 1 / ( $dominances[ $closest_color_key ] + 1 );
+						$colors[ $closest_color_key ] = self::_combine_colors_respecting_dominance( $colors[ $closest_color_key ], $block_color, $ratio );
+						$dominances[ $closest_color_key ]++;
+					} else {
+						$colors[]     = $block_color;
+						$dominances[] = 1;
+					}
+				} else {
+					$colors[]     = $block_color;
+					$dominances[] = 1;
+				}
+			}
+		}
+
+		$final_colors = array();
+
+		do {
+			$tested_color           = array_pop( $colors );
+			$tested_color_dominance = $dominances[ count( $colors ) ];
+			$closest_color_key      = $tested_color->getClosestMatch( $colors );
+
+			if ( $closest_color_key !== null ) {
+				$distance = $tested_color->getDistanceLabFrom( $colors[ $closest_color_key ] );
+
+				if ( $distance <= $fidelity ) {
+					$ratio                             = $tested_color_dominance / ( $dominances[ $closest_color_key ] + $tested_color_dominance );
+					$colors[ $closest_color_key ]      = self::_combine_colors_respecting_dominance( $colors[ $closest_color_key ], $tested_color, $ratio );
+					$dominances[ $closest_color_key ] += $tested_color_dominance;
+				} else {
+					$final_colors[] = $tested_color;
+				}
+			} else {
+				$final_colors[] = $tested_color;
+			}
+		} while ( ! empty( $colors ) );
+
+		foreach( $final_colors as $key => $color ) {
+			echo sprintf( '<span style="border: 1px solid #444; background: %s; display: block; width: %dpx;">%s</span>', '#' . $color->toHex(), $dominances[ $key ], '#' . $color->toHex() );
+		}
+		echo '<br/><br/>';
+		imagepng( $image_obj, sprintf( 'vip-test-%d.png', rand( 1, 1000 ) ) );
+
+		return $results;
+	}
+
+	/**
+	 * Combines two colors in HSL following a specified ratio and returns a resulting color
+	 *
+	 * @param  Jetpack_Color $color1
+	 * @param  Jetpack_Color $color2
+	 * @param  float         $ratio  Float value from 0 to 1, 0 means $color1 is infinitely more dominant
+	 * @return string                Resulting color in hex
+	 */
+	private static function _combine_colors_respecting_dominance( Jetpack_Color $color1, Jetpack_Color $color2, $ratio = 0.5 ) {
+		$hsl1 = $color1->toHsl();
+		$hsl2 = $color2->toHsl();
+
+		$h = $hsl1['h'] - ( ( $hsl1['h'] - $hsl2['h'] ) * $ratio );
+		$s = $hsl1['s'] - ( ( $hsl1['s'] - $hsl2['s'] ) * $ratio );
+		$l = $hsl1['l'] - ( ( $hsl1['l'] - $hsl2['l'] ) * $ratio );
+
+		return new Jetpack_Color( array( $h, $s, $l ), 'hsl' );
+	}
+
+	/**
+	 * Checks whether the image contains transparent areas or not
+	 *
+	 * The result is probablistic in order to avoid checking huge images pixel by pixel,
+	 * but it works for most real world use cases. We're testing all pixels on
+	 * the border of the image and also all pixels on one vertical and horizontal line
+	 * within the image.
+	 *
+	 * @param  [resource: gd] $image_obj
+	 * @return [bool]         True if the image is grayscale, false if not, null if unable to decide
+	 */
+	private static function _image_has_transparency( $image_obj ) {
+		if ( ! is_resource( $image_obj ) || get_resource_type( $image_obj ) !== 'gd' ) {
+			return null;
+		}
+
+		$width  = (int) imagesx( $image_obj );
+		$height = (int) imagesy( $image_obj );
+
+		if ( $width * $height === 0 ) {
+			return null; // We can't figure out the size, too bad
+		}
+
+		$alpha = 0;
+
+		// Check out horizontal borders and one horizontal line inside the image
+		for ( $i = 0; $i <= $width; $i++ ) {
+			$alpha += ( imagecolorat( $image_obj, $i, 0 ) & 0x7F000000 ) >> 24;
+			$alpha += ( imagecolorat( $image_obj, $i, intval( $height / 2 ) ) & 0x7F000000 ) >> 24;
+			$alpha += ( imagecolorat( $image_obj, $i, $height ) & 0x7F000000 ) >> 24;
+		}
+
+		// Check out vertical borders and one vertical line inside the image
+		for ( $i = 0; $i <= $height; $i++ ) {
+			$alpha += ( imagecolorat( $image_obj, 0, $i ) & 0x7F000000 ) >> 24;
+			$alpha += ( imagecolorat( $image_obj, intval( $width / 2 ), $i ) & 0x7F000000 ) >> 24;
+			$alpha += ( imagecolorat( $image_obj, $width, $i ) & 0x7F000000 ) >> 24;
+		}
+
+		// If alpha > 0, it means that at least one pixel from the tested set is at least a little bit transparent
+		return $alpha > 0 ? true : false;
+	}
+
+	/**
 	 *
 	 * @param string $html Some markup, possibly containing image tags
 	 * @param array $images_already_extracted (just an array of image URLs without query strings, no special structure), used for de-duplication
 	 * @return array Image URLs extracted from the HTML, stripped of query params and de-duped
 	 */
-	public static function get_images_from_html( $html, $images_already_extracted ) {
-		$image_list = $images_already_extracted;
+	public static function get_images_from_html( $html, $image_list ) {
 		$from_html = Jetpack_PostImages::from_html( $html );
 		if ( !empty( $from_html ) ) {
 			$srcs = wp_list_pluck( $from_html, 'src' );
@@ -418,8 +665,11 @@ class Jetpack_Media_Meta_Extractor {
 					continue;
 				}
 
-				if ( ! in_array( $queryless, $image_list ) ) {
-					$image_list[] = $queryless;
+				if ( ! array_key_exists( $queryless, $image_list ) ) {
+					$image_list[ $queryless ] = array(
+						'from' => 'html',
+						'src'  => $queryless,
+					);
 				}
 			}
 		}

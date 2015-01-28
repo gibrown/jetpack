@@ -158,10 +158,10 @@ class Jetpack_PostImages {
 			return $images;
 
 		$post_images = get_posts( array(
-			'post_parent' => $post_id,   // Must be children of post
-			'numberposts' => 5,          // No more than 5
-			'post_type' => 'attachment', // Must be attachments
-			'post_mime_type' => 'image', // Must be images
+			'post_parent'    => $post_id,     // Must be children of post
+			'numberposts'    => 5,            // No more than 5
+			'post_type'      => 'attachment', // Must be attachments
+			'post_mime_type' => 'image',      // Must be images
 		) );
 
 		if ( !$post_images )
@@ -170,22 +170,26 @@ class Jetpack_PostImages {
 		$permalink = get_permalink( $post_id );
 
 		foreach ( $post_images as $post_image ) {
-			$meta = wp_get_attachment_metadata( $post_image->ID );
+			$info = wp_prepare_attachment_for_js( $post_image );
+
 			// Must be larger than 200x200
-			if ( !isset( $meta['width'] ) || $meta['width'] < $width )
+			if ( !isset( $info['width'] ) || $info['width'] < $width )
 				continue;
-			if ( !isset( $meta['height'] ) || $meta['height'] < $height )
+			if ( !isset( $info['height'] ) || $info['height'] < $height )
 				continue;
 
 			$url = wp_get_attachment_url( $post_image->ID );
 
 			$images[] = array(
-				'type'       => 'image',
-				'from'       => 'attachment',
-				'src'        => $url,
-				'src_width'  => $meta['width'],
-				'src_height' => $meta['height'],
-				'href'       => $permalink,
+				'type'        => 'image',
+				'from'        => 'attachment',
+				'src'         => $url,
+				'src_width'   => $info['width'],
+				'src_height'  => $info['height'],
+				'href'        => $permalink,
+				'title'       => empty( $info['title'] ) ? '' : $info['title'],
+				'description' => empty( $info['description'] ) ? '' : $info['description'],
+				'caption'     => empty( $info['caption'] ) ? '' : $info['caption'],
 			);
 		}
 
@@ -199,9 +203,11 @@ class Jetpack_PostImages {
 		$inserted_images = array();
 
 		foreach( $html_images as $html_image ) {
-			$src = parse_url( $html_image['src'] );
+			$src         = parse_url( $html_image['src'] );
+			$src['path'] = preg_replace( '~\-[0-9]+x[0-9]+(\.[a-z]{3,})$~', '$1', $src['path'] ); // handle resized images
 			$inserted_images[] = $src['scheme'] . '://' . $src['host'] . $src['path']; // strip off any query strings
 		}
+
 		foreach( $images as $i => $image ) {
 			if ( !in_array( $image['src'], $inserted_images ) )
 				unset( $images[$i] );
