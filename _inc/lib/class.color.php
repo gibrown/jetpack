@@ -644,7 +644,7 @@ class Jetpack_Color {
 		$rgbMax = max($rgb);
 		$diff = $rgbMax - $rgbMin;
 
-		return $diff < $threshold;
+		return $diff <= $threshold;
 	}
 
 	/**

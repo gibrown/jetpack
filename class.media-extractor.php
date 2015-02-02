@@ -5,6 +5,7 @@
  *
  * @todo Additionally, have some filters on number of items in each field
  */
+
 class Jetpack_Media_Meta_Extractor {
 
 	// Some consts for what to extract
@@ -382,18 +383,24 @@ class Jetpack_Media_Meta_Extractor {
 
 	public static function build_image_struct( $image_list ) {
 		if ( ! empty( $image_list ) ) {
-			$retval      = array( 'image' => array() );
-			$unique_imgs = array_unique( $image_list );
+			$retval = array( 'image' => array() );
 
 			// Analyze various properties of the image using GD library and more
 			$image_list = Jetpack_Media_Meta_Extractor::get_image_visual_properties( $image_list );
 
-			foreach ( $image_list as $img ) {
-				$retval['image'][] = array( 'url' => $img );
+			// It was useful to index the list using image URLs to avoid duplicities,
+			// but now we could rather use integer keys
+			$image_list = array_values( $image_list );
+
+			foreach ( $image_list as $index => $img_properties ) {
+				foreach( $img_properties as $property => $value ) {
+					$retval['image'][ $index ][ $property ] = $value;
+				}
 			}
 			$image_booleans['image'] = count( $retval['image'] );
 			if ( ! empty( $image_booleans ) )
 				$retval['has'] = $image_booleans;
+
 			return $retval;
 		} else {
 			return array();
@@ -414,7 +421,6 @@ class Jetpack_Media_Meta_Extractor {
 				$image_list[ $src ] = self::get_single_image_visual_properties( $image_info );
 			}
 		}
-		die;
 		return $image_list;
 	}
 
@@ -431,7 +437,6 @@ class Jetpack_Media_Meta_Extractor {
 		}
 
 		$image_url = $image_info['src'];
-		var_dump( $image_url );
 
 		if ( ( $src = parse_url( $image_url ) ) && isset( $src['scheme'], $src['host'], $src['path'] ) ) {
 			$clean_image_url = $src['scheme'] . '://' . $src['host'] . $src['path'];
@@ -462,30 +467,27 @@ class Jetpack_Media_Meta_Extractor {
 		$color_info = self::_image_get_color_information( $image_obj );
 
 		$image_info = array_merge( $image_info, array(
+			'dimensions'       => $color_info['dimensions'],
 			'colors'           => $color_info['colors'],
 			'is_grayscale'     => $color_info['is_grayscale'],
 			'has_transparency' => empty( $has_transparency ) ? self::_image_has_transparency( $image_obj ) : $has_transparency,
 		) );
 
-		// var_dump( $image_info );
 		return $image_info;
 	}
 
 	/**
-	 * Color quantization routine. Converts the image into mosaic and then samples all
-	 * colors found in an image and stores them in buckets of colors that are visually
-	 * distant enough. Required distance is being controlled by the $fidelity parameter.
-	 * This method also checks whether the whole image is grayscale or not.
+	 * Color quantization routine. This method also checks whether the whole image is grayscale or not.
 	 *
-	 * @author dero <dero@xwp.co>
 	 * @param  [resource: gd] $image_obj
-	 * @param  integer        $fidelity            How distinct colors should be considered to belong to a common bucket
-	 *                                             Any value over 20 will force a single bucket to be created
-	 * @param  integer        $grayscale_tolerance Percentage of samples that can be non gray in order to consider the image grayscale
+	 * @param  integer        $colors              How many colors should be returned. If image contains fewer colors,
+	 *                                             fewer are returned.
+	 * @param  integer        $grayscale_tolerance How much color deviation do we still consider to be grayscale?
 	 * @return [array]                             Array containing color buckets and grayscale boolean
 	 */
-	private static function _image_get_color_information( $image_obj, $fidelity = 6, $grayscale_tolerance = 0 ) {
+	private static function _image_get_color_information( $image_obj, $num_colors = 15, $grayscale_tolerance = 0 ) {
 		$results = array(
+			'dimensions'   => array(),
 			'colors'       => array(),
 			'is_grayscale' => null,
 		);
@@ -493,106 +495,72 @@ class Jetpack_Media_Meta_Extractor {
 		if ( ! is_resource( $image_obj ) || get_resource_type( $image_obj ) !== 'gd' ) {
 			return $results;
 		}
-		if ( ! class_exists( 'Jetpack_Color' ) ) {
-			jetpack_require_lib( 'class.color' ); // We need Jetpack_Color, we need it bad
-		}
 
 		$width  = (int) imagesx( $image_obj );
 		$height = (int) imagesy( $image_obj );
 
 		if ( $width * $height === 0 ) {
-			return $results; // We can't figure out the size, too bad
+			return null; // We can't figure out the size, too bad
 		}
 
-		$max_blocks = 100; // Maximal number of areas created by pixelation
+		$results['dimensions'] = array(
+			'width'  => $width,
+			'height' => $height,
+			'area'   => $width * $height,
+		);
 
-		// We take the total amount of pixels in the image and split them into $max_blocks pieces.
-		// Then we create a square from each piece, round up and we have the minimal block size that
-		// is going to generate less than $max_blocks blocks.
-		$scale_ratio = ceil( sqrt( ( $width * $height ) / $max_blocks ) );
+		if ( ! class_exists( 'Jetpack_Color' ) ) {
+			jetpack_require_lib( 'class.color' ); // We need Jetpack_Color, we need it bad
+		}
+		if ( ! class_exists( 'ColorThief' ) ) {
+			jetpack_require_lib( 'ColorThief' ); // ColorThief is lightweight advanced MMCQ library that gives
+			                                     // best results in an area of color quantization
+		}
 
-		imagescale( $image_obj, ceil( $width / $scale_ratio ), ceil( $height / $scale_ratio ), IMG_BILINEAR_FIXED );
-		imagescale( $image_obj, $width, $height, IMG_BILINEAR_FIXED );
+		// The code below grabs colors of individual pixels. We don't want to check every pixel,
+		// but ideally we'd like to check the same amount of pixels every time regardless if the
+		// image is small or large. This leads to a bit more precise quantization results for
+		// small images compared to the large ones.
+		$max_tests     = 1500;
+		$skip_constant = ceil( sqrt( ( $width * $height ) / $max_tests ) );
+		$palette       = ColorThief::getPalette( $image_obj, $num_colors, $skip_constant );
 
+		// Until disproved, we assume this is a grayscale image
+		$is_grayscale  = true;
 
-		$colors     = array();
-		$dominances = array();
-
-		for ( $x = 0; $x <= $width; $x = $x + $scale_ratio ) {
-			for ( $y = 0; $y <= $height; $y = $y + $scale_ratio ) {
-				extract( imagecolorsforindex( $image_obj, imagecolorat( $image_obj, $x, $y ) ) );
-
-				$block_color = new Jetpack_Color( array( $red, $green, $blue ), 'rgb' );
-
-				if ( ! empty( $colors ) ) {
-					$closest_color_key = $block_color->getClosestMatch( $colors );
-				}
-				if ( $closest_color_key !== null ) {
-					$distance = $block_color->getDistanceLabFrom( $colors[ $closest_color_key ] );
-
-					if ( $distance <= $fidelity ) {
-						$ratio                        = 1 / ( $dominances[ $closest_color_key ] + 1 );
-						$colors[ $closest_color_key ] = self::_combine_colors_respecting_dominance( $colors[ $closest_color_key ], $block_color, $ratio );
-						$dominances[ $closest_color_key ]++;
-					} else {
-						$colors[]     = $block_color;
-						$dominances[] = 1;
-					}
-				} else {
-					$colors[]     = $block_color;
-					$dominances[] = 1;
-				}
+		foreach( $palette as $info ) {
+			// If the dominance of this color === 0, then we don't consider this color
+			// to be present in the image. This is important as ColorThief will make colors up
+			// when there are too few distincts colors in it to begin with.
+			if ( empty( $info['dominance'] ) ) {
+				continue;
 			}
-		}
 
-		$final_colors = array();
+			// Sanitize input coming from ColorThief
+			$color = array(
+				max( 0, min( 255, $info['color'][0] ) ),
+				max( 0, min( 255, $info['color'][1] ) ),
+				max( 0, min( 255, $info['color'][2] ) ),
+			);
+			$color = new Jetpack_Color( array( $color[0], $color[1], $color[2] ), 'rgb' );
 
-		do {
-			$tested_color           = array_pop( $colors );
-			$tested_color_dominance = $dominances[ count( $colors ) ];
-			$closest_color_key      = $tested_color->getClosestMatch( $colors );
+			$hsv_color              = $color->toHsvInt();
+			$hsv_color['dominance'] = $info['dominance'];
 
-			if ( $closest_color_key !== null ) {
-				$distance = $tested_color->getDistanceLabFrom( $colors[ $closest_color_key ] );
+			// Uncomment to generate a basic color graph related to the processed image
+			// echo sprintf( '<span style="background: #%s; display: block; width: %dpx;">%s</span>', $color->toHex(), $info['dominance'] * 5, $color->toHex() );
 
-				if ( $distance <= $fidelity ) {
-					$ratio                             = $tested_color_dominance / ( $dominances[ $closest_color_key ] + $tested_color_dominance );
-					$colors[ $closest_color_key ]      = self::_combine_colors_respecting_dominance( $colors[ $closest_color_key ], $tested_color, $ratio );
-					$dominances[ $closest_color_key ] += $tested_color_dominance;
-				} else {
-					$final_colors[] = $tested_color;
-				}
-			} else {
-				$final_colors[] = $tested_color;
+			// One of the dominant colors is not grayscale? Well, in that case we're sure this
+			// is not a grayscale image
+			if ( ! $color->isGrayscale( $grayscale_tolerance ) ) {
+				$is_grayscale = false;
 			}
-		} while ( ! empty( $colors ) );
 
-		foreach( $final_colors as $key => $color ) {
-			echo sprintf( '<span style="border: 1px solid #444; background: %s; display: block; width: %dpx;">%s</span>', '#' . $color->toHex(), $dominances[ $key ], '#' . $color->toHex() );
+			$results['colors'][] = $hsv_color;
 		}
-		echo '<br/><br/>';
-		imagepng( $image_obj, sprintf( 'vip-test-%d.png', rand( 1, 1000 ) ) );
+		$results['is_grayscale'] = $is_grayscale;
 
 		return $results;
-	}
-
-	/**
-	 * Combines two colors in HSL following a specified ratio and returns a resulting color
-	 *
-	 * @param  Jetpack_Color $color1
-	 * @param  Jetpack_Color $color2
-	 * @param  float         $ratio  Float value from 0 to 1, 0 means $color1 is infinitely more dominant
-	 * @return string                Resulting color in hex
-	 */
-	private static function _combine_colors_respecting_dominance( Jetpack_Color $color1, Jetpack_Color $color2, $ratio = 0.5 ) {
-		$hsl1 = $color1->toHsl();
-		$hsl2 = $color2->toHsl();
-
-		$h = $hsl1['h'] - ( ( $hsl1['h'] - $hsl2['h'] ) * $ratio );
-		$s = $hsl1['s'] - ( ( $hsl1['s'] - $hsl2['s'] ) * $ratio );
-		$l = $hsl1['l'] - ( ( $hsl1['l'] - $hsl2['l'] ) * $ratio );
-
-		return new Jetpack_Color( array( $h, $s, $l ), 'hsl' );
 	}
 
 	/**
