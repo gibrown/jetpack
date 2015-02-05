@@ -45,6 +45,7 @@ abstract class Sharing_Source {
 	}
 
 	public function get_link( $url, $text, $title, $query = '', $id = false ) {
+		$args = func_get_args();
 		$klasses = array( 'share-'.$this->get_class(), 'sd-button' );
 
 		if ( 'icon' == $this->button_style || 'icon-text' == $this->button_style )
@@ -57,8 +58,12 @@ abstract class Sharing_Source {
 			if ( true == $this->open_link_in_new )
 				$text .= __( ' (Opens in new window)', 'jetpack' );
 		}
-
-		$url = apply_filters( 'sharing_display_link', $url );
+		
+		$id = apply_filters( 'jetpack_sharing_display_id', $id, $this, $args );
+		$url = apply_filters( 'sharing_display_link', $url, $this, $id, $args ); // backwards compatibility
+		$url = apply_filters( 'jetpack_sharing_display_link', $url, $this, $id, $args );
+		$query = apply_filters( 'jetpack_sharing_display_query', $query, $this, $id, $args );
+		
 		if ( !empty( $query ) ) {
 			if ( false === stripos( $url, '?' ) )
 				$url .= '?'.$query;
@@ -68,7 +73,11 @@ abstract class Sharing_Source {
 
 		if ( 'text' == $this->button_style )
 			$klasses[] = 'no-icon';
-
+		
+		$klasses = apply_filters( 'jetpack_sharing_display_classes', $klasses, $this, $id, $args );
+		$title = apply_filters( 'jetpack_sharing_display_title', $title, $this, $id, $args );
+		$text = apply_filters( 'jetpack_sharing_display_text', $text, $this, $id, $args );
+		
 		return sprintf(
 			'<a rel="nofollow" data-shared="%s" class="%s" href="%s"%s title="%s"><span%s>%s</span></a>',
 			( $id ? esc_attr( $id ) : '' ),
@@ -1156,10 +1165,19 @@ class Share_Pinterest extends Sharing_Source {
 	}
 
 	public function get_display( $post ) {
+		$share_url = 'http://pinterest.com/pin/create/button/?url=' . rawurlencode( $this->get_share_url( $post->ID ) ) . '&description=' . rawurlencode( $post->post_title );
+		$display = '';
+
 		if ( $this->smart )
-			return '<div class="pinterest_button"><a href="' . esc_url( 'http://pinterest.com/pin/create/button/?url=' . rawurlencode( $this->get_share_url( $post->ID ) ) . '&description=' . rawurlencode( $post->post_title ) ) .'" data-pin-do="buttonBookmark" data-pin-config="beside"><img src="//assets.pinterest.com/images/pidgets/pinit_fg_en_rect_gray_20.png" /></a></div>';
+			$display .= sprintf( '<div class="pinterest_button"><a href="%s" data-pin-do="buttonBookmark" data-pin-config="beside"><img src="//assets.pinterest.com/images/pidgets/pinit_fg_en_rect_gray_20.png" /></a></div>', esc_url( $share_url ) );
 		else
-			return $this->get_link( get_permalink( $post->ID ), _x( 'Pinterest', 'share to', 'jetpack' ), __( 'Click to share on Pinterest', 'jetpack' ), 'share=pinterest' );
+			$display = $this->get_link( get_permalink( $post->ID ), _x( 'Pinterest', 'share to', 'jetpack' ), __( 'Click to share on Pinterest', 'jetpack' ), 'share=pinterest', 'sharing-pinterest-' . $post->ID );
+
+		if ( apply_filters( 'jetpack_register_post_for_share_counts', true, $post->ID, 'linkedin' ) ) {
+			sharing_register_post_for_share_counts( $post->ID );
+		}
+
+		return $display;
 	}
 
 	public function process_request( $post, array $post_data ) {

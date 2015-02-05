@@ -369,7 +369,7 @@ new WPCOM_JSON_API_List_Posts_Endpoint( array(
 		'type'     => "(string) Specify the post type. Defaults to 'post', use 'any' to query for both posts and pages. Post types besides post and page need to be whitelisted using the <code>rest_api_allowed_post_types</code> filter.",
 		'parent_id' => '(int) Returns only posts which are children of the specified post. Applies only to hierarchical post types.',
 		'exclude'  => '(array:int|int) Excludes the specified post ID(s) from the response',
-		'exclude_tree' => '(int) Excludes the specified post and all of its descendents from the response. Applies only to hierarhical post types.',
+		'exclude_tree' => '(int) Excludes the specified post and all of its descendants from the response. Applies only to hierarchical post types.',
 		'status'   => array(
 			'publish' => 'Return only published posts.',
 			'private' => 'Return only private posts.',
@@ -431,7 +431,7 @@ new WPCOM_JSON_API_List_Posts_v1_1_Endpoint( array(
 		'type'     => "(string) Specify the post type. Defaults to 'post', use 'any' to query for both posts and pages. Post types besides post and page need to be whitelisted using the <code>rest_api_allowed_post_types</code> filter.",
 		'parent_id' => '(int) Returns only posts which are children of the specified post. Applies only to hierarchical post types.',
 		'exclude'  => '(array:int|int) Excludes the specified post ID(s) from the response',
-		'exclude_tree' => '(int) Excludes the specified post and all of its descendents from the response. Applies only to hierarhical post types.',
+		'exclude_tree' => '(int) Excludes the specified post and all of its descendants from the response. Applies only to hierarchical post types.',
 		'status'   => '(string) Comma-separated list of statuses for which to query, including any of: "publish", "private", "draft", "pending", "future", and "trash", or simply "any". Defaults to "publish"',
 		'sticky'    => array(
 			'include'   => 'Sticky posts are not excluded from the list.',
@@ -2972,6 +2972,7 @@ new WPCOM_JSON_API_Site_Settings_Endpoint( array(
 		'default_ping_status'          => '(bool) Allow link notifications from other blogs?',
 		'default_comment_status'       => '(bool) Allow comments on new articles?',
 		'blog_public'                  => '(string) Site visibility; -1: private, 0: discourage search engines, 1: allow search engines',
+		'jetpack_sync_non_public_post_stati' => '(bool) allow sync of post and pages with non-public posts stati',
 		'jetpack_relatedposts_enabled' => '(bool) Enable related posts?',
 		'jetpack_relatedposts_show_headline' => '(bool) Show headline in related posts?',
 		'jetpack_relatedposts_show_thumbnails' => '(bool) Show thumbnails in related posts?',
@@ -3007,6 +3008,7 @@ new WPCOM_JSON_API_Site_Settings_Endpoint( array(
 		'sharing_label'                => '(string) Label to use for sharing buttons, e.g. "Share this:"',
 		'sharing_show'                 => '(string|array:string) Post type or array of types where sharing buttons are to be displayed',
 		'sharing_open_links'           => '(string) Link target for sharing buttons (same or new)',
+		'twitter_via'                  => '(string) Twitter username to include in tweets when people share using the Twitter button',
 	),
 
 	'response_format' => array(

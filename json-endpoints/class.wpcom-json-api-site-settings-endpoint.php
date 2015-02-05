@@ -22,7 +22,7 @@ class WPCOM_JSON_API_Site_Settings_Endpoint extends WPCOM_JSON_API_Endpoint {
 		if ( defined( 'IS_WPCOM' ) && IS_WPCOM ) {
 			$this->load_theme_functions();
 		}
-		
+
 		if ( ! is_user_logged_in() ) {
 			return new WP_Error( 'Unauthorized', 'You must be logged-in to manage settings.', 401 );
 		} else if ( ! current_user_can( 'manage_options' ) ) {
@@ -153,6 +153,7 @@ class WPCOM_JSON_API_Site_Settings_Endpoint extends WPCOM_JSON_API_Endpoint {
 					'disabled_likes'          => (bool) get_option( 'disabled_likes' ),
 					'disabled_reblogs'        => (bool) get_option( 'disabled_reblogs' ),
 					'jetpack_comment_likes_enabled' => (bool) get_option( 'jetpack_comment_likes_enabled', false ),
+					'twitter_via'             => (string) get_option( 'twitter_via' ),
 				);
 
 				if ( class_exists( 'Sharing_Service' ) ) {
@@ -241,7 +242,7 @@ class WPCOM_JSON_API_Site_Settings_Endpoint extends WPCOM_JSON_API_Endpoint {
 					}
 					break;
 				case 'wga':
-					if ( ! isset( $value['code'] ) || ! preg_match( '/^UA-[\d-]+$/', $value['code'] ) ) {
+					if ( ! isset( $value['code'] ) || ! preg_match( '/^$|^UA-[\d-]+$/i', $value['code'] ) ) {
 						return new WP_Error( 'invalid_code', 'Invalid UA ID' );
 					}
 					$wga = get_option( 'wga', array() );
@@ -249,6 +250,9 @@ class WPCOM_JSON_API_Site_Settings_Endpoint extends WPCOM_JSON_API_Endpoint {
 					if ( update_option( 'wga', $wga ) ) {
 						$updated[ $key ] = $value;
 					}
+
+					$enabled_or_disabled = $wga['code'] ? 'enabled' : 'disabled';
+					bump_stats_extras( 'google-analytics', $enabled_or_disabled );
 
 					$business_plugins = WPCOM_Business_Plugins::instance();
 					$business_plugins->activate_plugin( 'wp-google-analytics' );
