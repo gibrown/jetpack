@@ -512,8 +512,8 @@ class Jetpack_Media_Meta_Extractor {
 		if ( ! class_exists( 'Jetpack_Color' ) ) {
 			jetpack_require_lib( 'class.color' ); // We need Jetpack_Color, we need it bad
 		}
-		if ( ! class_exists( 'ColorThief' ) ) {
-			jetpack_require_lib( 'ColorThief' ); // ColorThief is lightweight advanced MMCQ library that gives
+		if ( ! class_exists( 'Jetpack_ColorThief' ) ) {
+			jetpack_require_lib( 'class.color-thief.php' ); // ColorThief is lightweight advanced MMCQ library that gives
 			                                     // best results in an area of color quantization
 		}
 
@@ -523,7 +523,7 @@ class Jetpack_Media_Meta_Extractor {
 		// small images compared to the large ones.
 		$max_tests     = 1500;
 		$skip_constant = ceil( sqrt( ( $width * $height ) / $max_tests ) );
-		$palette       = ColorThief::getPalette( $image_obj, $num_colors, $skip_constant );
+		$palette       = Jetpack_ColorThief::getPalette( $image_obj, $num_colors, $skip_constant );
 
 		// Until disproved, we assume this is a grayscale image
 		$is_grayscale  = true;

@@ -1,7 +1,6 @@
 <?php
-
 /*
- * Color Thief PHP
+ * Jetpack Color Thief PHP
  *
  * Grabs the dominant color or a representative color palette from an image.
  *
@@ -28,7 +27,7 @@
  *
  */
 
-class ColorThief {
+class Jetpack_ColorThief {
     const SIGBITS=5;
     const RSHIFT=3;
     const MAX_ITERATIONS=1000;
@@ -158,7 +157,7 @@ class ColorThief {
 
     private static function loadImage($sourceImage, $quality, array $area = null)
     {
-        $loader = new ImageLoader();
+        $loader = new Jetpack_CT_ImageLoader();
         $image  = $loader->load($sourceImage);
         $startx = 0;
         $starty = 0;
@@ -211,7 +210,7 @@ class ColorThief {
 
         // find min/max
         foreach ($histo as $index => $count) {
-            list($rval, $gval, $bval) = static::getColorsFromIndex($index, 0, ColorThief::SIGBITS);
+            list($rval, $gval, $bval) = static::getColorsFromIndex($index, 0, Jetpack_ColorThief::SIGBITS);
 
             if ($rval < $rmin) {
                 $rmin = $rval;
@@ -232,7 +231,7 @@ class ColorThief {
             }
         }
 
-        return new VBox($rmin, $rmax, $gmin, $gmax, $bmin, $bmax, $histo);
+        return new Jetpack_CT_VBox($rmin, $rmax, $gmin, $gmax, $bmin, $bmax, $histo);
     }
 
     private static function doCut($color, $vbox, $partialsum, $total)
@@ -407,8 +406,8 @@ class ColorThief {
 
         $vbox = static::vboxFromHistogram($histo);
 
-        $pq = new PQueue(function ($a, $b) {
-            return ColorThief::naturalOrder($a->count(), $b->count());
+        $pq = new Jetpack_CT_PQueue(function ($a, $b) {
+            return Jetpack_ColorThief::naturalOrder($a->count(), $b->count());
         });
         $pq->push($vbox);
 
@@ -417,14 +416,14 @@ class ColorThief {
 
         // Re-sort by the product of pixel occupancy times the size in color space.
         $pq->setComparator(function ($a, $b) {
-            return ColorThief::naturalOrder($a->count() * $a->volume(), $b->count() * $b->volume());
+            return Jetpack_ColorThief::naturalOrder($a->count() * $a->volume(), $b->count() * $b->volume());
         });
 
         // next set - generate the median cuts using the (npix * vol) sorting.
         static::quantizeIter($pq, $maxcolors - $pq->size(), $histo);
 
         // calculate the actual colors
-        $cmap = new CMap();
+        $cmap = new Jetpack_CT_CMap();
 
         for ($i = $pq->size(); $i > 0; $i--) {
             $cmap->push($pq->pop());
@@ -434,7 +433,7 @@ class ColorThief {
     }
 }
 
-class VBox
+class Jetpack_CT_VBox
 {
     public $r1;
     public $r2;
@@ -479,7 +478,7 @@ class VBox
             if ($this->volume() > count($this->histo)) {
                 // Iterate over the histogram if the size of this histogram is lower than the vbox volume
                 foreach ($this->histo as $rgb => $count) {
-                    $rgb_array =  ColorThief::getColorsFromIndex($rgb, 0, ColorThief::SIGBITS);
+                    $rgb_array =  Jetpack_ColorThief::getColorsFromIndex($rgb, 0, Jetpack_ColorThief::SIGBITS);
                     if ($this->contains($rgb_array, 0)) {
                         $npix += $count;
                     }
@@ -489,7 +488,7 @@ class VBox
                 for ($i = $this->r1; $i <= $this->r2; $i++) {
                     for ($j = $this->g1; $j <= $this->g2; $j++) {
                         for ($k = $this->b1; $k <= $this->b2; $k++) {
-                            $index = ColorThief::getColorIndex($i, $j, $k);
+                            $index = Jetpack_ColorThief::getColorIndex($i, $j, $k);
                             if (isset($this->histo[$index])) {
                                 $npix += $this->histo[$index];
                             }
@@ -505,14 +504,14 @@ class VBox
 
     public function copy()
     {
-        return new VBox($this->r1, $this->r2, $this->g1, $this->g2, $this->b1, $this->b2, $this->histo);
+        return new Jetpack_CT_VBox($this->r1, $this->r2, $this->g1, $this->g2, $this->b1, $this->b2, $this->histo);
     }
 
     public function avg($force = false)
     {
         if (! $this->avg || $force) {
             $ntot = 0;
-            $mult = 1 << (8 - ColorThief::SIGBITS);
+            $mult = 1 << (8 - Jetpack_ColorThief::SIGBITS);
             $rsum = 0;
             $gsum = 0;
             $bsum = 0;
@@ -520,7 +519,7 @@ class VBox
             for ($i = $this->r1; $i <= $this->r2; $i++) {
                 for ($j = $this->g1; $j <= $this->g2; $j++) {
                     for ($k = $this->b1; $k <= $this->b2; $k++) {
-                        $histoindex = ColorThief::getColorIndex($i, $j, $k);
+                        $histoindex = Jetpack_ColorThief::getColorIndex($i, $j, $k);
                         $hval = isset ($this->histo[$histoindex]) ? $this->histo[$histoindex] : 0;
                         $ntot += $hval;
                         $rsum += ($hval * ($i + 0.5) * $mult);
@@ -549,7 +548,7 @@ class VBox
         return $this->avg;
     }
 
-    public function contains(array $pixel, $rshift = ColorThief::RSHIFT)
+    public function contains(array $pixel, $rshift = Jetpack_ColorThief::RSHIFT)
     {
         $rval = $pixel[0] >> $rshift;
         $gval = $pixel[1] >> $rshift;
@@ -565,7 +564,7 @@ class VBox
     }
 }
 
-class PQueue
+class Jetpack_CT_PQueue
 {
     private $contents = array();
     private $sorted = false;
@@ -636,14 +635,14 @@ class PQueue
     }
 }
 
-class CMap
+class Jetpack_CT_CMap
 {
     private $vboxes;
 
     public function __construct()
     {
-        $this->vboxes = new PQueue(function ($a, $b) {
-            return ColorThief::naturalOrder(
+        $this->vboxes = new Jetpack_CT_PQueue(function ($a, $b) {
+            return Jetpack_ColorThief::naturalOrder(
                 $a['vbox']->count() * $a['vbox']->volume(),
                 $b['vbox']->count() * $b['vbox']->volume()
             );
@@ -714,7 +713,7 @@ class CMap
     }
 }
 
-class ImageLoader
+class Jetpack_CT_ImageLoader
 {
     public function load($source)
     {
@@ -762,7 +761,7 @@ class ImageLoader
 /**
 * Basic interface for all image adapters.
 */
-interface IImageAdapter
+interface Jetpack_CT_IImageAdapter
 {
     /**
      * Loads an image from file.
@@ -817,7 +816,7 @@ interface IImageAdapter
 /**
 * Base adapter implementation to handle image manipulation
 */
-abstract class ImageAdapter implements IImageAdapter
+abstract class Jetpack_CT_ImageAdapter implements Jetpack_CT_IImageAdapter
 {
     /**
      * The image resource handler
@@ -849,7 +848,7 @@ abstract class ImageAdapter implements IImageAdapter
     }
 }
 
-class GDImageAdapter extends ImageAdapter
+class Jetpack_CT_GDImageAdapter extends Jetpack_CT_ImageAdapter
 {
     public function load($resource)
     {
