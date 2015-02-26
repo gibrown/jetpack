@@ -5,7 +5,6 @@
  *
  * @todo Additionally, have some filters on number of items in each field
  */
-
 class Jetpack_Media_Meta_Extractor {
 
 	// Some consts for what to extract
@@ -167,7 +166,14 @@ class Jetpack_Media_Meta_Extractor {
 							$id = call_user_func( $shortcode_get_id_func, $attr );
 						} else if ( method_exists( $shortcode_class_name, $shortcode_get_id_method ) ) {
 							$id = call_user_func( array( $shortcode_class_name, $shortcode_get_id_method ), $attr );
+						} else {
+							//WP.com compatibility for audio shortcode
+							if ( 'audio' == $shortcode ) {
+								if ( isset( $attr[ 0 ] ) )
+									$id = $attr[ 0 ];
+							}
 						}
+
 						if ( ! empty( $id )
 							&& ( ! isset( $shortcode_details[$shortcode_name] ) || ! in_array( $id, $shortcode_details[$shortcode_name] ) ) )
 							$shortcode_details[$shortcode_name][] = $id;
@@ -394,7 +400,10 @@ class Jetpack_Media_Meta_Extractor {
 
 			foreach ( $image_list as $index => $img_properties ) {
 				foreach( $img_properties as $property => $value ) {
-					$retval['image'][ $index ][ $property ] = $value;
+					if ( 'src' == $property )
+						$retval['image'][ $index ][ 'url' ] = $value;
+					else
+						$retval['image'][ $index ][ $property ] = $value;
 				}
 			}
 			$image_booleans['image'] = count( $retval['image'] );
@@ -450,19 +459,21 @@ class Jetpack_Media_Meta_Extractor {
 
 		switch ( $image_extension ) {
 			case 'gif':
-				$image_obj = imagecreatefromgif( $clean_image_url );
+				$image_obj = @imagecreatefromgif( $clean_image_url );
 				break;
 			case 'png' :
-				$image_obj = imagecreatefrompng( $clean_image_url );
+				$image_obj = @imagecreatefrompng( $clean_image_url );
 				break;
 			case 'jpg' :
 			case 'jpeg' :
 				$has_transparency = false;
-				$image_obj        = imagecreatefromjpeg( $clean_image_url );
+				$image_obj        = @imagecreatefromjpeg( $clean_image_url );
 				break;
 			default:
 				return $image_info;
 		}
+		if ( false == $image_obj )
+			return $image_info; //couldn't load image
 
 		$color_info = self::_image_get_color_information( $image_obj );
 
@@ -510,11 +521,13 @@ class Jetpack_Media_Meta_Extractor {
 		);
 
 		if ( ! class_exists( 'Jetpack_Color' ) ) {
-			jetpack_require_lib( 'class.color' ); // We need Jetpack_Color, we need it bad
+			// We need Jetpack_Color, we need it bad
+			jetpack_require_lib( 'class.color' );
 		}
 		if ( ! class_exists( 'Jetpack_ColorThief' ) ) {
-			jetpack_require_lib( 'class.color-thief.php' ); // ColorThief is lightweight advanced MMCQ library that gives
-			                                     // best results in an area of color quantization
+			// ColorThief is lightweight advanced MMCQ library that gives
+			// best results in an area of color quantization
+			jetpack_require_lib( 'class.color-thief' ); 
 		}
 
 		// The code below grabs colors of individual pixels. We don't want to check every pixel,

@@ -1,4 +1,16 @@
 <?php
+/*
+ * These tests are built to run in both Jetpack and on WordPress.com
+ *
+ */
+
+//hacky harness for running on WP.com
+if ( ( defined( 'IS_WPCOM' ) && IS_WPCOM ) ) {
+	require_once dirname( dirname( __FILE__ ) ) . '/MediaTestBase.php';
+	jetpack_require_lib( 'class.wpcom-media-meta-extractor' );
+	abstract class WP_UnitTestCase extends MediaTestBase {
+	}
+}
 
 class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 
@@ -11,8 +23,9 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 		$post_id = $this->factory->post->create( array(
 			'post_content' => '',
 		) );
+		$this->assertGreaterThan( 0, $post_id );
 
-		$extract = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id );
+		$extract = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id );
 
 		$this->assertInternalType( 'array', $extract );
 		$this->assertEmpty( $extract );
@@ -30,7 +43,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			'post_content' => "<img src='$img_title'>",
 		) );
 
-		$extract = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id );
+		$extract = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id );
 
 		$this->assertInternalType( 'array', $extract );
 		$this->assertArrayHasKey( 'image', $extract );
@@ -53,7 +66,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			'post_content' => "[$shortcode]",
 		) );
 
-		$extract = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id );
+		$extract = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id );
 
 		$this->assertInternalType( 'array', $extract );
 		$this->assertArrayHasKey( 'shortcode', $extract );
@@ -74,7 +87,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			'post_content' => "$url",
 		) );
 
-		$extract = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id );
+		$extract = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id );
 
 		$this->assertInternalType( 'array', $extract );
 		$this->assertArrayHasKey( 'link', $extract );
@@ -93,7 +106,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			'post_content' => "@$mention",
 		) );
 
-		$extract = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id );
+		$extract = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id );
 
 		$this->assertInternalType( 'array', $extract );
 		$this->assertArrayHasKey( 'mention', $extract );
@@ -113,7 +126,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			'post_content' => "$embed",
 		) );
 
-		$extract = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id );
+		$extract = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id );
 
 		$this->assertInternalType( 'array', $extract );
 		$this->assertArrayHasKey( 'embed', $extract );
@@ -350,7 +363,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			)
 		);
 
-		$result = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id, Jetpack_Media_Meta_Extractor::LINKS );
+		$result = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id, Jetpack_Media_Meta_Extractor::LINKS );
 
 		$this->assertEquals( $expected, $result );
 	}
@@ -365,14 +378,56 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 
 		$expected = array(
 			'image' => array(
-				0 => array( 'url' => 'http://mrwpsandbox.files.wordpress.com/2013/03/screen-shot-2013-03-15-at-1-27-05-pm.png' ),
+				0 => array(
+					'from' => 'html',
+					'url' => 'http://mrwpsandbox.files.wordpress.com/2013/03/screen-shot-2013-03-15-at-1-27-05-pm.png',
+					'dimensions' => array(
+						'width' => 519,
+						'height' => 317,
+						'area' => 164523,
+					),
+					'colors' => array(
+						array(
+							'hue' => 141,
+							'sat' => 212,
+							'val' => 185,
+							'dominance' => 82,
+						),
+						array(
+							'hue' => 0,
+							'sat' => 0,
+							'val' => 19,
+							'dominance' => 12,
+						),
+						array(
+							'hue' => 142,
+							'sat' => 46,
+							'val' => 182,
+							'dominance' => 2,
+						),
+						array(
+							'hue' => 0,
+							'sat' => 0,
+							'val' => 251,
+							'dominance' => 2,
+						),
+						array(
+							'hue' => 0,
+							'sat' => 6,
+							'val' => 79,
+							'dominance' => 2,
+						),
+					),
+					'is_grayscale' => false,
+					'has_transparency' => false,
+				),
 			),
 			'has' => array(
 				'image' => 1,
 			)
 		);
 
-		$result = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id, Jetpack_Media_Meta_Extractor::IMAGES );
+		$result = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id, Jetpack_Media_Meta_Extractor::IMAGES );
 
 		$this->assertEquals( $expected, $result );
 	}
@@ -395,7 +450,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			'has' => array( 'mention' => 2 ),
 		);
 
-		$result = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id, Jetpack_Media_Meta_Extractor::MENTIONS );
+		$result = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id, Jetpack_Media_Meta_Extractor::MENTIONS );
 
 		$this->assertEquals( $expected, $result );
 	}
@@ -460,7 +515,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			),
 		);
 
-		$result = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id, Jetpack_Media_Meta_Extractor::SHORTCODES );
+		$result = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id, Jetpack_Media_Meta_Extractor::SHORTCODES );
 
 		$this->assertEquals( $expected, $result );
 	}
@@ -481,7 +536,7 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 			) ),
 		);
 
-		$result = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id, Jetpack_Media_Meta_Extractor::EMBEDS );
+		$result = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id, Jetpack_Media_Meta_Extractor::EMBEDS );
 
 		$this->assertEquals( $expected, $result );
 	}
@@ -505,15 +560,120 @@ class WP_Test_Jetpack_MediaExtractor extends WP_UnitTestCase {
 <p>He remembered the bad things about his own school days, and thought that it hadn&#8217;t done him any harm &#8211; and that other children should suffer the way that he had.</p>
 EOT;
 
+		$post_id = $this->factory->post->create( array(
+			'post_content' => $html,
+			'post_excerpt' => '',
+			'post_status' => 'publish',
+			'post_type' => 'post',
+		) );
+
 		$expected = array(
-			0 => 'http://images-r-us.com/some-image.png',
-			1 => 'http://paulbernal.files.wordpress.com/2013/05/mr-gove-cover.jpeg',
-			2 => 'http://paulbernal.files.wordpress.com/2013/05/mr-gove-close-up.jpeg',
+			'image' => array(
+				array(
+					'url' => 'http://paulbernal.files.wordpress.com/2013/05/mr-gove-cover.jpeg',
+					'from' => 'html',
+					'dimensions' => array(
+						'width' => 612,
+						'height' => 547,
+						'area' => 334764,
+					),
+					'colors' => array(
+						array(
+							'hue' => 162,
+							'sat' => 46,
+							'val' => 28,
+							'dominance' => 48,
+						),
+						array(
+							'hue' => 152,
+							'sat' => 84,
+							'val' => 228,
+							'dominance' => 44,
+						),
+						array(
+							'hue' => 0,
+							'sat' => 0,
+							'val' => 251,
+							'dominance' => 4,
+						),
+						array(
+							'hue' => 254,
+							'sat' => 236,
+							'val' => 200,
+							'dominance' => 1,
+						),
+						array(
+							'hue' => 154,
+							'sat' => 98,
+							'val' => 154,
+							'dominance' => 1,
+						),
+						array(
+							'hue' => 152,
+							'sat' => 93,
+							'val' => 178,
+							'dominance' => 1,
+						),
+						array(
+							'hue' => 22,
+							'sat' => 4,
+							'val' => 126,
+							'dominance' => 1,
+						),
+					),
+					'is_grayscale' => false,
+					'has_transparency' => false,
+				),
+				array(
+					'url' => 'http://paulbernal.files.wordpress.com/2013/05/mr-gove-close-up.jpeg',
+					'from' => 'html',
+					'dimensions' => array(
+						'width' => 612,
+						'height' => 542,
+						'area' => 331704,
+					),
+					'colors' => array(
+						array(
+							'hue' => 151,
+							'sat' => 85,
+							'val' => 229,
+							'dominance' => 58,
+						),
+						array(
+							'hue' => 157,
+							'sat' => 66,
+							'val' => 35,
+							'dominance' => 37,
+						),
+						array(
+							'hue' => 153,
+							'sat' => 100,
+							'val' => 155,
+							'dominance' => 2,
+						),
+						array(
+							'hue' => 0,
+							'sat' => 0,
+							'val' => 251,
+							'dominance' => 1,
+						),
+						array(
+							'hue' => 152,
+							'sat' => 98,
+							'val' => 183,
+							'dominance' => 1,
+						),
+					),
+					'is_grayscale' => false,
+					'has_transparency' => false,
+				),
+			),
+			'has' => array(
+				'image' => 2
+			)
 		);
 
-		$already_extracted_images = array( 'http://images-r-us.com/some-image.png' );
-
-		$result = Jetpack_Media_Meta_Extractor::get_images_from_html( $html, $already_extracted_images );
+		$result = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id, Jetpack_Media_Meta_Extractor::IMAGES );
 
 		$this->assertEquals( $expected, $result );
 	}
@@ -563,7 +723,7 @@ EOT;
 			)
 		);
 
-		$result = Jetpack_Media_Meta_Extractor::extract( Jetpack_Options::get_option( 'id' ), $post_id, Jetpack_Media_Meta_Extractor::ALL );
+		$result = Jetpack_Media_Meta_Extractor::extract( get_current_blog_id(), $post_id, Jetpack_Media_Meta_Extractor::ALL );
 
 		$this->assertEquals( $expected, $result );
 	}
